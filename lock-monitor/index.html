@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pPOLY 锁仓看板</title>
+  <script>
+    // 首帧前应用已保存的主题，避免闪烁
+    try { const t = localStorage.getItem('plock-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}
+  </script>
+  <style>
+    /* 与 anthropic-ipo-monitor 同一套配色：ivory / clay / slate，辅色 sky 与 olive */
+    :root {
+      --bg: #f0eee6; --ink: #141413; --sub: #6b6a63; --line: rgba(20,20,19,.08);
+      --acc: #d97757; --acc-2: #6a9bcc; --acc-3: #788c5d; --acc-soft: rgba(217,119,87,.14);
+      --track: rgba(20,20,19,.07); --chip: rgba(255,255,255,.45); --solid: #faf9f5;
+      --panel: rgba(255,255,255,.52); --glass-edge: rgba(255,255,255,.75); --glass-hi: rgba(255,255,255,.65);
+      --shadow: 0 10px 40px rgba(94,60,40,.10); --blob-a: rgba(217,119,87,.38); --blob-b: rgba(106,155,204,.30); --blob-c: rgba(120,140,93,.22);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #1f1e1d; --ink: #f0eee6; --sub: #a3a094; --line: rgba(240,238,230,.08);
+        --acc: #e08b6c; --acc-2: #82abd6; --acc-3: #98ad7c; --acc-soft: rgba(224,139,108,.16);
+        --track: rgba(240,238,230,.08); --chip: rgba(255,255,255,.04); --solid: #2b2a27;
+        --panel: rgba(48,46,43,.45); --glass-edge: rgba(255,255,255,.09); --glass-hi: rgba(255,255,255,.06);
+        --shadow: 0 10px 40px rgba(0,0,0,.35); --blob-a: rgba(217,119,87,.28); --blob-b: rgba(106,155,204,.16); --blob-c: rgba(120,140,93,.14);
+        color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #1f1e1d; --ink: #f0eee6; --sub: #a3a094; --line: rgba(240,238,230,.08);
+      --acc: #e08b6c; --acc-2: #82abd6; --acc-3: #98ad7c; --acc-soft: rgba(224,139,108,.16);
+      --track: rgba(240,238,230,.08); --chip: rgba(255,255,255,.04); --solid: #2b2a27;
+      --panel: rgba(48,46,43,.45); --glass-edge: rgba(255,255,255,.09); --glass-hi: rgba(255,255,255,.06);
+      --shadow: 0 10px 40px rgba(0,0,0,.35); --blob-a: rgba(217,119,87,.28); --blob-b: rgba(106,155,204,.16); --blob-c: rgba(120,140,93,.14);
+      color-scheme: dark;
+    }
+    :root[data-theme="light"] { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(38vw 38vw at 8% 6%, var(--blob-a), transparent 70%),
+        radial-gradient(34vw 34vw at 92% 22%, var(--blob-b), transparent 70%),
+        radial-gradient(40vw 40vw at 70% 96%, var(--blob-c), transparent 70%),
+        radial-gradient(30vw 30vw at 18% 78%, var(--blob-a), transparent 70%); }
+    body { margin: 0; padding: 24px 16px 40px; background: var(--bg); color: var(--ink);
+      font: 14px/1.5 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-variant-numeric: tabular-nums; }
+    main { max-width: 1080px; margin: 0 auto; display: grid; gap: 16px; }
+    a { color: inherit; }
+    .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+    .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+    h1 { margin: 10px 0 0; font-size: 22px; font-family: ui-serif, Georgia, "Songti SC", "STSong", serif; font-weight: 600; }
+    .corner { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+      text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--glass-edge);
+      -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: inset 0 1px 0 var(--glass-hi); transition: color .15s, border-color .15s; }
+    .chip:hover { color: var(--acc); border-color: var(--acc); }
+    .chip svg { width: 14px; height: 14px; }
+    .chip.theme { padding: 5px 9px; cursor: pointer; font: inherit; font-size: 12.5px; }
+    .chip.theme .moon { display: none; }
+    .is-dark .chip.theme .sun { display: none; }
+    .is-dark .chip.theme .moon { display: block; }
+    @media (max-width: 520px) { .corner { align-items: flex-start; } }
+    .live { display: flex; align-items: center; gap: 8px; color: var(--sub); font-size: 12.5px; }
+    .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--acc); }
+    .live.on i { animation: pulse 2s infinite; }
+    .live.err i { background: #ef4444; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(217,119,87,.55); } 70% { box-shadow: 0 0 0 8px rgba(217,119,87,0); } 100% { box-shadow: 0 0 0 0 rgba(217,119,87,0); } }
+    .panel { position: relative; background: var(--panel); border: 1px solid var(--glass-edge); border-radius: 20px; padding: 20px; min-width: 0;
+      -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
+      box-shadow: var(--shadow), inset 0 1px 0 var(--glass-hi); }
+    .ptitle { font-size: 13px; color: var(--sub); margin: 0 0 14px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; }
+    .ptitle b { color: var(--ink); font-size: 15px; white-space: nowrap; }
+
+    /* hero */
+    .hero { display: grid; grid-template-columns: 1fr 200px; gap: 24px; align-items: center; }
+    .big-label { color: var(--sub); font-size: 13px; }
+    .big { font-size: 56px; font-weight: 800; line-height: 1.05; letter-spacing: -1px; margin: 6px 0; }
+    .big small { font-size: 18px; font-weight: 600; color: var(--sub); margin-left: 6px; letter-spacing: 0; }
+    .delta { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--acc-soft); color: var(--acc); font-weight: 600; font-size: 13px; }
+    .delta.sub { background: var(--chip); color: var(--sub); border: 1px solid var(--line); font-weight: 500; margin-left: 6px; }
+    .kv { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 20px; border-top: 1px dashed var(--line); }
+    .kv div { padding: 12px 12px 0 0; min-width: 0; }
+    .kv div + div { padding-left: 14px; border-left: 1px dashed var(--line); }
+    .kv span { display: block; color: var(--sub); font-size: 12px; }
+    .kv b { font-size: 20px; font-weight: 700; }
+    .kv b span { display: inline; font-size: inherit; color: inherit; }
+    .kv em { font-style: normal; font-weight: 400; color: var(--sub); margin: 0 6px; }
+    .kv b .c2 { color: var(--acc-2); }
+    .kv b .c1 { color: var(--acc); }
+    .gauge { position: relative; width: 200px; height: 200px; }
+    .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .gauge .c { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+    .gauge .c b { font-size: 26px; font-weight: 800; }
+    .gauge .c span { color: var(--sub); font-size: 12px; }
+    .glegend { display: flex; justify-content: center; gap: 12px; font-size: 12px; color: var(--sub); margin-top: 6px; }
+    .glegend i, .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+    /* timeline */
+    .tl { position: relative; height: 62px; margin: 6px 4px 0; }
+    .tl .rail { position: absolute; left: 0; right: 0; top: 24px; height: 8px; border-radius: 4px; background: var(--track); }
+    .tl .fill { position: absolute; left: 0; top: 24px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 55%, transparent), var(--acc)); width: 0; }
+    .tl .mk { position: absolute; top: 0; transform: translateX(-50%); font-size: 11.5px; white-space: nowrap; text-align: center; }
+    .tl .mk::after { content: ""; display: block; width: 2px; height: 14px; margin: 2px auto 0; background: currentColor; }
+    .tl .now { color: var(--acc); font-weight: 600; }
+    .tl .ev { color: var(--acc-2); font-weight: 600; }
+    .tl .ends { position: absolute; top: 40px; font-size: 11.5px; color: var(--sub); }
+    .rates { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+    .rates div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+    .rates span { display: block; color: var(--sub); font-size: 12px; }
+    .rates b { font-size: 16px; }
+
+    .two { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+    .two.even { grid-template-columns: 1fr 1fr; }
+    .chart { position: relative; }
+    .chart svg { width: 100%; height: auto; display: block; }
+    .chart text { fill: var(--sub); font-size: 11px; }
+    .legend { display: flex; gap: 14px; font-size: 12px; color: var(--sub); }
+    .tip { position: absolute; pointer-events: none; background: var(--solid); border: 1px solid var(--line); border-radius: 8px;
+      padding: 6px 10px; font-size: 12px; white-space: nowrap; display: none; box-shadow: 0 6px 18px rgba(0,0,0,.12); z-index: 2; }
+
+    /* distribution columns */
+    .cols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 220px; }
+    .col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+    .col .n { font-size: 12px; font-weight: 700; }
+    .col .p { font-size: 11px; color: var(--sub); margin-bottom: 4px; }
+    .col .b { width: 100%; max-width: 38px; background: linear-gradient(180deg, var(--acc), color-mix(in srgb, var(--acc) 55%, transparent)); border-radius: 8px 8px 3px 3px; min-height: 3px; }
+    .col .l { font-size: 11px; color: var(--sub); margin-top: 6px; text-align: center; line-height: 1.2; white-space: nowrap; }
+
+    .px { font-size: 40px; font-weight: 800; line-height: 1.1; }
+    .px small { font-size: 16px; color: var(--sub); font-weight: 600; margin-left: 6px; }
+    .pxchg { color: var(--sub); font-size: 12.5px; margin-top: 2px; }
+    .up { color: var(--acc-3); } .dn { color: #d9534f; }
+    .mini { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
+    .mini div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+    .mini span { display: block; color: var(--sub); font-size: 12px; }
+    .mini b { font-size: 16px; }
+
+    .feed { display: grid; gap: 6px; }
+    .feed div { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 10px; background: var(--chip); border: 1px solid var(--line); font-size: 13px; }
+    .feed .t { color: var(--sub); font-size: 12px; white-space: nowrap; }
+    .feed a { text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .feed a:hover { color: var(--acc); }
+    .tag { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; }
+    .tag.m6 { background: var(--acc-soft); color: var(--acc); }
+    .tag.ipo { background: color-mix(in srgb, var(--acc-2) 18%, transparent); color: var(--acc-2); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: right; font-weight: 500; color: var(--sub); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    td { text-align: right; padding: 7px 8px; border-bottom: 1px dashed var(--line); white-space: nowrap; }
+    th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
+    td a { text-decoration: none; }
+    td a:hover { color: var(--acc); }
+    .tblwrap { overflow-x: auto; }
+
+    .facts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+    .facts > div { grid-column: span 2; background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+    .facts > .w2 { grid-column: span 4; }
+    .facts > .half { grid-column: span 3; }
+    .facts > .w3 { grid-column: span 6; }
+    .facts span { display: block; color: var(--sub); font-size: 12px; margin-bottom: 2px; }
+    code { font-size: 12px; word-break: break-all; }
+    .foot { color: var(--sub); font-size: 12px; display: grid; gap: 6px; }
+    .more { margin-top: 8px; }
+    .more summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--sub); font-size: 13px; padding: 4px 2px; user-select: none; }
+    .more summary::-webkit-details-marker { display: none; }
+    .more summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg) translateY(-2px); transition: transform .2s; }
+    .more[open] summary::after { transform: rotate(-135deg) translateX(-2px); }
+    .more summary:hover { color: var(--acc); }
+    .more .facts, .more .tblwrap { margin-top: 10px; }
+
+    @media (max-width: 860px) {
+      .two, .two.even { grid-template-columns: 1fr; }
+      .rates { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 640px) {
+      body { padding: 16px 16px 32px; }
+      .hero { grid-template-columns: 1fr; }
+      .gauge { width: 150px; height: 150px; justify-self: center; }
+      .big { font-size: 42px; }
+      .kv { grid-template-columns: 1fr 1fr; }
+      .kv div:nth-child(3) { grid-column: span 2; border-left: 0; padding-left: 0; }
+      .facts > div, .facts > .w2, .facts > .half { grid-column: span 6; }
+      .cols { height: 180px; gap: 4px; }
+      .px { font-size: 32px; }
+      .tl .mk { font-size: 10.5px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>pPOLY 锁仓看板</h1></div>
+    <div class="corner">
+      <nav class="links">
+        <a class="chip" href="https://github.com/bibi45c/ppoly-lock-monitor" target="_blank" rel="noopener" title="页面源码">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
+        <a class="chip" href="https://app.paimon.finance/points?tab=staking&amp;pool=0xde4da55b45c4634517111d3e4fd8f3a39c643bf9" target="_blank" rel="noopener" title="Paimon 锁仓页面">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></g></svg>Paimon</a>
+        <button class="chip theme" id="themeBtn" type="button" title="切换深浅色" aria-label="切换深浅色">
+          <svg class="sun" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/></g></svg>
+          <svg class="moon" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M13.5 9.5A5.5 5.5 0 016.5 2.5a5.5 5.5 0 107 7z"/></svg>
+        </button>
+      </nav>
+      <div class="live" id="live"><i></i><span id="liveText">连接中…</span></div>
+    </div>
+  </div>
+
+  <section class="panel hero">
+    <div>
+      <div class="big-label">已锁仓 pPOLY</div>
+      <div class="big"><span id="total">—</span><small>pPOLY</small></div>
+      <span class="delta" id="delta">近 24 小时 —</span><span class="delta sub" id="usd">—</span>
+      <div class="kv">
+        <div><span>锁仓地址</span><b id="wallets">—</b></div>
+        <div><span>6 个月锁 / IPO 锁（地址）</span><b><span class="c1" id="n6">—</span><em>/</em><span class="c2" id="nIpo">—</span></b></div>
+        <div><span>单地址 均值 / 中位数</span><b><span id="avg">—</span><em>/</em><span class="c1" id="med">—</span></b></div>
+      </div>
+    </div>
+    <div>
+      <div class="gauge">
+        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--track)" stroke-width="12"/>
+          <circle id="ringIpo" cx="60" cy="60" r="52" fill="none" stroke="var(--acc-2)" stroke-width="12" stroke-dasharray="0 327"/>
+          <circle id="ring6" cx="60" cy="60" r="52" fill="none" stroke="var(--acc)" stroke-width="12" stroke-dasharray="0 327"/></svg>
+        <div class="c"><b id="supply">—</b><span>占 pPOLY 总量</span></div>
+      </div>
+      <div class="glegend"><span><i style="background:var(--acc)"></i>6 个月 <b id="a6">—</b></span><span><i style="background:var(--acc-2)"></i>IPO <b id="aIpo">—</b></span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="ptitle"><b>首轮回购进度</b><span id="tlText"></span></div>
+    <div class="tl">
+      <div class="rail"></div><div class="fill" id="tlFill"></div>
+      <div class="mk now" id="mkNow"></div><div class="mk ev" id="mkAnn"></div>
+      <div class="ends" style="left:0">11/16 锁仓上线</div><div class="ends" style="right:0">12/31 首轮回购</div>
+    </div>
+    <div class="rates" id="rates"></div>
+  </section>
+
+  <section class="two">
+    <div class="panel">
+      <div class="ptitle"><b>锁仓曲线</b>
+        <span class="legend"><span><i style="background:var(--acc)"></i>累计锁仓</span><span><i style="background:var(--acc-2)"></i>每日新增</span></span></div>
+      <div class="chart"><svg id="svg" viewBox="0 0 640 300"></svg><div class="tip" id="tip"></div></div>
+      <div class="foot" style="margin-top:8px">按每个锁仓的创建时间累计，加仓计入该地址首次锁仓那天。</div>
+    </div>
+    <div class="panel">
+      <div class="ptitle"><b>单地址锁仓量分布</b><span>单位：地址数</span></div>
+      <div class="cols" id="cols"></div>
+      <div class="foot" style="margin-top:12px">每列为「上一列上限 &lt; 数量 ≤ 本列上限」；最低锁仓 50 pPOLY。</div>
+    </div>
+  </section>
+
+  <section class="two even">
+    <div class="panel">
+      <div class="ptitle"><b>pPOLY 二级价格</b><span>DexScreener · 流动性最大的池子</span></div>
+      <div><div class="px" id="px">—<small>USD</small></div><div class="pxchg" id="pxChg">&nbsp;</div></div>
+      <div class="mini" id="pxStats"></div>
+      <div class="foot" style="margin-top:10px">发行价 $15.50；回购承诺「高于发行价」，具体价格与额度 12/24 公布。</div>
+    </div>
+    <div class="panel">
+      <div class="ptitle"><b>最近锁仓</b><span id="feedNote"></span></div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="ptitle"><b>锁仓地址</b><span id="tblNote">按锁仓量排序</span></div>
+    <div class="tblwrap"><table id="tbl"></table></div>
+    <details class="more" id="tblMore" style="display:none"><summary id="tblMoreText">展开其余地址</summary><div class="tblwrap"><table id="tbl2"></table></div></details>
+  </section>
+
+  <section class="panel">
+    <div class="ptitle"><b>规则要点</b><span>摘自 Paimon 页面，以官方为准</span></div>
+    <div class="facts">
+      <div><span>门槛</span>锁 50 pPOLY 及以上获 Unicorn HODLer 徽章，每钱包一个锁仓</div>
+      <div><span>回购</span>每季度末，价格高于 $15.50 发行价；首轮 12/31，12/24 公布价格与额度</div>
+      <div><span>回购上限</span>不超过自己的锁仓量；卖的是钱包里未锁的 pPOLY，锁仓部分不动</div>
+    </div>
+    <details class="more">
+      <summary>更多规则（两种锁、成交、PP 奖励、解锁、合约）</summary>
+      <div class="facts">
+        <div class="half"><span>6 个月锁</span>从锁仓时起 180 天，加仓重新计时；1.5× 积分，无 PP；到期徽章失效，再加仓可续，提取即销毁徽章</div>
+        <div class="half"><span>IPO 锁</span>无固定到期，Polymarket IPO 或被收购（30 天内）后开放提取；2× 积分；12/31 前可加入，6 个月锁可单向转入</div>
+        <div class="half"><span>成交</span>每轮有总额度，先到先得，可能只成交一部分或完全不成交</div>
+        <div class="half"><span>PP 奖励（仅 IPO 锁）</span>12/31 按每锁 1 pPOLY 投入 1 PP，按锁仓量分配，解锁时随 pPOLY 发放</div>
+        <div class="w3"><span>合约（BSC）</span>
+          锁仓 <a class="mono" href="https://bscscan.com/address/0xde4da55b45c4634517111d3e4fd8f3a39c643bf9" target="_blank" rel="noopener"><code>0xde4da55b45c4634517111d3e4fd8f3a39c643bf9</code></a> ·
+          徽章 <a class="mono" href="https://bscscan.com/token/0x3507b3ef34998dc87157658432bad694b96927ce" target="_blank" rel="noopener"><code>0x3507b3ef34998dc87157658432bad694b96927ce</code></a> ·
+          pPOLY <a class="mono" href="https://bscscan.com/token/0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6" target="_blank" rel="noopener"><code>0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6</code></a></div>
+      </div>
+    </details>
+  </section>
+
+  <div class="foot">
+    <div>非官方看板，数据直接读 BSC 链上合约（徽章 NFT 逐个 <code>ownerOf</code> → 锁仓合约 <code>getLock</code>），每分钟刷新；价格来自 DexScreener。不构成投资建议。</div>
+    <div id="footSnap"></div>
+  </div>
+</main>
+
+<script>
+const STAKING = '0xde4da55b45c4634517111d3e4fd8f3a39c643bf9';
+const BADGE = '0x3507b3ef34998dc87157658432bad694b96927ce';
+const PPOLY = '0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6';
+const SUPPLY = 322580.65, ISSUE = 15.5;
+const SEL = { ownerOf: '6352211e', getLock: '6b9db4e6', totalLocked: '05a9f274', activeCount: '4ac3a13a' };
+const RPCS = ['https://bsc-rpc.publicnode.com', 'https://bsc-dataseed.bnbchain.org'];
+const T = (y, m, d, h = 0) => Date.UTC(y, m - 1, d, h) / 1000;
+const LAUNCH = T(2026, 11, 16), ANNOUNCE = T(2026, 12, 24), ROUND1 = T(2026, 12, 31), IPO_CLOSE = T(2026, 12, 31, 23) + 3599;
+const ROUNDS = [T(2026, 12, 31), T(2027, 3, 31), T(2027, 6, 30), T(2027, 9, 30), T(2027, 12, 31)];
+const BATCH = 40, MISS_LIMIT = 8, REFRESH = 60000;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = (v, d = 2) => Number.isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—';
+const fmt0 = (v) => fmt(v, 0);
+const usd = (v) => !Number.isFinite(v) ? '—' : v >= 1e6 ? '$' + fmt(v / 1e6, 2) + 'M' : v >= 1e4 ? '$' + fmt(v / 1e3, 1) + 'K' : '$' + fmt0(v);
+const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
+// 北京时间
+const bj = (ts, withYear) => { const d = new Date((ts + 8 * 3600) * 1000); const p = (n) => String(n).padStart(2, '0');
+  return (withYear ? d.getUTCFullYear() + '/' : '') + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()); };
+const bjDay = (ts) => { const d = new Date((ts + 8 * 3600) * 1000); return (d.getUTCMonth() + 1) + '/' + d.getUTCDate(); };
+const days = (s) => s <= 0 ? '已到' : s < 86400 ? Math.ceil(s / 3600) + ' 小时' : (s / 86400).toFixed(1) + ' 天';
+const now = () => Math.floor(Date.now() / 1000);
+
+// ---------- theme ----------
+const root = document.documentElement;
+const isDark = () => root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+const syncTheme = () => root.classList.toggle('is-dark', isDark());
+syncTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTheme);
+$('themeBtn').onclick = () => { root.dataset.theme = isDark() ? 'light' : 'dark'; try { localStorage.setItem('plock-theme', root.dataset.theme); } catch {} syncTheme(); };
+
+// ---------- chain ----------
+const pad = (x) => BigInt(x).toString(16).padStart(64, '0');
+const call = (to, sel, arg) => ({ to, data: '0x' + sel + (arg === undefined ? '' : pad(arg)) });
+async function batch(calls) {
+  let err;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const body = calls.map((c, id) => ({ jsonrpc: '2.0', id, method: 'eth_call', params: [c, 'latest'] }));
+      const r = await fetch(RPCS[i % RPCS.length], { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!Array.isArray(j)) throw new Error('batch');
+      const out = new Array(calls.length);
+      for (const x of j) out[x.id] = x.error ? (/revert/i.test(x.error.message || '') ? null : undefined) : x.result;
+      if (out.some((x) => x === undefined)) throw new Error('rpc');
+      return out;
+    } catch (e) { err = e; await new Promise((r) => setTimeout(r, 600 * (i + 1))); }
+  }
+  throw err;
+}
+const words = (hex) => { const d = hex.slice(2); const w = []; for (let i = 0; i < d.length; i += 64) w.push(BigInt('0x' + d.slice(i, i + 64))); return w; };
+const toNum = (x) => Number(x / 10n ** 12n) / 1e6;
+
+async function readChain() {
+  const owners = [];
+  let id = 1, misses = 0;
+  while (misses < MISS_LIMIT) {
+    const ids = Array.from({ length: BATCH }, (_, k) => id + k);
+    const res = await batch(ids.map((t) => call(BADGE, SEL.ownerOf, t)));
+    for (let k = 0; k < ids.length && misses < MISS_LIMIT; k++) {
+      if (res[k] === null) { misses++; continue; }
+      misses = 0; owners.push([ids[k], '0x' + res[k].slice(-40)]);
+    }
+    id += BATCH;
+  }
+  const locks = [];
+  for (let i = 0; i < owners.length; i += BATCH) {
+    const part = owners.slice(i, i + BATCH);
+    const res = await batch(part.map(([, o]) => call(STAKING, SEL.getLock, o)));
+    part.forEach(([tokenId, owner], k) => {
+      if (!res[k]) return;
+      const g = words(res[k]);
+      if (g[0] === 0n) return;
+      locks.push([tokenId, owner, Number(g[8]), toNum(g[0]), toNum(g[1]), Number(g[4]), Number(g[5]), Number(g[6]), Number(g[9])]);
+    });
+  }
+  const [tl, ac] = await batch([call(STAKING, SEL.totalLocked), call(STAKING, SEL.activeCount)]);
+  return { locks, totalLocked: toNum(BigInt(tl)), activeLockCount: Number(BigInt(ac)), generatedAt: now() };
+}
+
+// ---------- state ----------
+let S = null, hist = [], price = null;
+const L = (l) => ({ tokenId: l[0], owner: l[1], type: l[2], amount: l[3], usdtBase: l[4], createdAt: l[5], lockStart: l[6], lockEnd: l[7] });
+
+function render() {
+  if (!S) return;
+  const locks = S.locks.map(L);
+  const total = S.totalLocked;
+  const n = locks.length;
+  const six = locks.filter((l) => l.type === 0), ipo = locks.filter((l) => l.type === 1);
+  const a6 = six.reduce((s, l) => s + l.amount, 0), aI = ipo.reduce((s, l) => s + l.amount, 0);
+  const amts = locks.map((l) => l.amount).sort((a, b) => a - b);
+  const med = n ? (n % 2 ? amts[(n - 1) / 2] : (amts[n / 2 - 1] + amts[n / 2]) / 2) : NaN;
+  const t = now();
+  const d24 = locks.filter((l) => l.createdAt >= t - 86400);
+  $('total').textContent = fmt(total);
+  $('delta').textContent = `近 24 小时 +${fmt(d24.reduce((s, l) => s + l.amount, 0))} · ${d24.length} 个新地址`;
+  $('usd').textContent = price ? `≈ ${usd(total * price.p)}（现价）` : `≈ ${usd(total * ISSUE)}（按 $15.5）`;
+  $('wallets').textContent = fmt0(n);
+  $('n6').textContent = six.length; $('nIpo').textContent = ipo.length;
+  $('avg').textContent = n ? fmt(total / n, 1) : '—'; $('med').textContent = fmt(med, 1);
+  $('supply').textContent = (total / SUPPLY * 100).toFixed(3) + '%';
+  $('a6').textContent = fmt(a6, 0); $('aIpo').textContent = fmt(aI, 0);
+  const C = 2 * Math.PI * 52, sum = a6 + aI || 1;
+  $('ring6').setAttribute('stroke-dasharray', `${C * a6 / sum} ${C}`);
+  $('ringIpo').setAttribute('stroke-dasharray', `0 ${C * a6 / sum} ${C * aI / sum} ${C}`);
+
+  // timeline
+  const span = ROUND1 - LAUNCH, pos = (x) => Math.max(0, Math.min(100, (x - LAUNCH) / span * 100));
+  $('tlFill').style.width = pos(t) + '%';
+  $('mkNow').style.left = pos(t) + '%'; $('mkNow').textContent = '现在 ' + bjDay(t);
+  $('mkAnn').style.left = pos(ANNOUNCE) + '%'; $('mkAnn').textContent = '12/24 公告';
+  // 两个标记靠太近时把「现在」的文字收短
+  $('mkNow').textContent = Math.abs(pos(t) - pos(ANNOUNCE)) < 18 ? '现在' : '现在 ' + bjDay(t);
+  $('tlText').textContent = t < ROUND1 ? `距首轮回购 ${days(ROUND1 - t)}` : '首轮回购已到期';
+  const next = ROUNDS.find((r) => r >= t);
+  const firstUnlock = six.length ? Math.min(...six.map((l) => l.lockEnd)) : 0;
+  $('rates').innerHTML = [
+    ['距 12/24 公告', days(ANNOUNCE - t)],
+    ['下一轮回购', next ? `${bjDay(next)} · ${days(next - t)}` : '—'],
+    ['全部回购上限合计', `${fmt(total, 0)} pPOLY`],
+    ['最早 6 个月锁到期', firstUnlock ? bj(firstUnlock, true).slice(0, 10) : '—'],
+  ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+
+  drawChart(locks);
+  drawCols(amts);
+  drawPrice(locks, total);
+  drawFeed(locks);
+  drawTable(locks, total);
+}
+
+function drawChart(locks) {
+  const svg = $('svg'), W = 640, H = 300, P = { l: 52, r: 44, t: 14, b: 28 };
+  const sorted = locks.slice().sort((a, b) => a.createdAt - b.createdAt);
+  const t1 = Math.max(now(), LAUNCH + 86400);
+  const t0 = LAUNCH;
+  // 按北京时间日分桶
+  const dayKey = (ts) => Math.floor((ts + 8 * 3600) / 86400);
+  const d0 = dayKey(t0), d1 = dayKey(t1);
+  const daily = new Map();
+  for (const l of sorted) daily.set(dayKey(l.createdAt), (daily.get(dayKey(l.createdAt)) || 0) + l.amount);
+  const maxCum = Math.max(sorted.reduce((s, l) => s + l.amount, 0), 1);
+  const maxDay = Math.max(...daily.values(), 1);
+  const x = (ts) => P.l + (ts - t0) / (t1 - t0) * (W - P.l - P.r);
+  const y = (v) => H - P.b - v / (maxCum * 1.08) * (H - P.t - P.b);
+  const yb = (v) => H - P.b - v / (maxDay * 1.6) * (H - P.t - P.b);
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const v = maxCum * 1.08 * i / 4, yy = y(v);
+    g += `<line x1="${P.l}" x2="${W - P.r}" y1="${yy}" y2="${yy}" stroke="var(--line)"/><text x="${P.l - 6}" y="${yy + 4}" text-anchor="end">${fmt0(v)}</text>`; }
+  const bw = Math.max(4, (W - P.l - P.r) / Math.max(1, d1 - d0 + 1) * 0.6);
+  for (let d = d0; d <= d1; d++) {
+    const ts = d * 86400 - 8 * 3600 + 43200, v = daily.get(d) || 0;
+    if (v) g += `<rect x="${x(ts) - bw / 2}" y="${yb(v)}" width="${bw}" height="${H - P.b - yb(v)}" rx="2" fill="var(--acc-2)" opacity=".55"/>`;
+  }
+  const step = Math.max(1, Math.ceil((d1 - d0 + 1) / 8));
+  for (let d = d0; d <= d1; d += step) { const ts = d * 86400 - 8 * 3600; if (ts >= t0)
+    g += `<text x="${x(ts)}" y="${H - 8}" text-anchor="middle">${bjDay(ts)}</text>`; }
+  let cum = 0, path = `M${x(t0)},${y(0)}`;
+  const pts = [];
+  for (const l of sorted) { path += `L${x(l.createdAt)},${y(cum)}`; cum += l.amount; path += `L${x(l.createdAt)},${y(cum)}`; pts.push([l.createdAt, cum, l]); }
+  path += `L${x(t1)},${y(cum)}`;
+  g += `<path d="${path}L${x(t1)},${y(0)}Z" fill="var(--acc-soft)"/><path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2.2"/>`;
+  g += `<text x="${W - P.r + 4}" y="${y(cum) + 4}" style="fill:var(--acc);font-weight:700">${fmt0(cum)}</text>`;
+  g += `<line id="hov" x1="0" x2="0" y1="${P.t}" y2="${H - P.b}" stroke="var(--sub)" stroke-dasharray="3 3" style="display:none"/>`;
+  svg.innerHTML = g;
+  const tip = $('tip'), hov = svg.querySelector('#hov');
+  svg.onmousemove = (e) => {
+    const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * W;
+    const ts = t0 + (mx - P.l) / (W - P.l - P.r) * (t1 - t0);
+    if (ts < t0 || ts > t1) { tip.style.display = 'none'; hov.style.display = 'none'; return; }
+    let c = 0, cnt = 0; for (const [tt, cc] of pts) { if (tt <= ts) { c = cc; cnt++; } }
+    const dv = daily.get(dayKey(ts)) || 0;
+    tip.innerHTML = `${bj(Math.floor(ts))}<br>累计 <b>${fmt(c)}</b> · ${cnt} 个地址<br>当日新增 ${fmt(dv)}`;
+    tip.style.display = 'block';
+    const left = (e.clientX - r.left) + 12;
+    tip.style.left = Math.min(left, r.width - tip.offsetWidth - 4) + 'px'; tip.style.top = (e.clientY - r.top - 10) + 'px';
+    hov.setAttribute('x1', x(ts)); hov.setAttribute('x2', x(ts)); hov.style.display = '';
+  };
+  svg.onmouseleave = () => { tip.style.display = 'none'; hov.style.display = 'none'; };
+}
+
+function drawCols(amts) {
+  const B = [[50, '50'], [75, '≤75'], [100, '≤100'], [200, '≤200'], [500, '≤500'], [2000, '≤2k'], [Infinity, '>2k']];
+  const cnt = B.map(() => 0);
+  for (const a of amts) { const i = B.findIndex(([u]) => a <= u + 1e-9); cnt[i < 0 ? B.length - 1 : i]++; }
+  const max = Math.max(...cnt, 1), n = amts.length || 1;
+  $('cols').innerHTML = B.map(([, lab], i) => `<div class="col"><div class="n">${cnt[i]}</div><div class="p">${(cnt[i] / n * 100).toFixed(0)}%</div>
+    <div class="b" style="height:${cnt[i] / max * 70}%"></div><div class="l">${lab}</div></div>`).join('');
+}
+
+function drawPrice(locks, total) {
+  const base = locks.reduce((s, l) => s + l.usdtBase, 0), amt = locks.reduce((s, l) => s + l.amount, 0);
+  const entry = amt ? base / amt : NaN;
+  if (price) {
+    $('px').innerHTML = `${fmt(price.p, 2)}<small>USD</small>`;
+    const ch = price.ch;
+    $('pxChg').innerHTML = (Number.isFinite(ch) ? `<span class="${ch >= 0 ? 'up' : 'dn'}">${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%</span> 24h · ` : '')
+      + `${esc(price.dex)} · 流动性 ${usd(price.liq)}`;
+  }
+  const p = price ? price.p : NaN;
+  $('pxStats').innerHTML = [
+    ['较发行价 $15.5', Number.isFinite(p) ? `${((p / ISSUE - 1) * 100).toFixed(1)}%` : '—'],
+    ['锁仓均价（锁仓时）', `$${fmt(entry, 2)}`],
+    ['按 $15.5 卖满回购上限', usd(total * ISSUE)],
+    ['卖 50 枚给回购 vs 现价至少多', Number.isFinite(p) ? `≥ $${fmt((ISSUE - p) * 50, 0)}` : '—'],
+  ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+}
+
+const typeTag = (t) => t === 1 ? '<span class="tag ipo">IPO</span>' : '<span class="tag m6">6 个月</span>';
+const addrLink = (a) => `<a class="mono" href="https://bscscan.com/address/${a}" target="_blank" rel="noopener" title="${a}">${short(a)}</a>`;
+
+function drawFeed(locks) {
+  const rec = locks.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+  $('feedNote').textContent = `共 ${locks.length} 个`;
+  $('feed').innerHTML = rec.map((l) => `<div><span class="t">${bj(l.createdAt)}</span>${addrLink(l.owner)}<span>${typeTag(l.type)} <b>${fmt(l.amount)}</b></span></div>`).join('') || '<div>暂无</div>';
+}
+
+function drawTable(locks, total) {
+  const rows = locks.slice().sort((a, b) => b.amount - a.amount || a.createdAt - b.createdAt);
+  const head = '<tr><th>#</th><th>地址</th><th>类型</th><th>数量</th><th>占比</th><th>锁仓时价格</th><th>锁仓（北京）</th><th>到期</th></tr>';
+  const tr = (l, i) => `<tr><td>${i + 1}</td><td>${addrLink(l.owner)}</td><td>${typeTag(l.type)}</td><td><b>${fmt(l.amount)}</b></td>
+    <td>${(l.amount / total * 100).toFixed(1)}%</td><td>${l.amount ? '$' + fmt(l.usdtBase / l.amount) : '—'}</td>
+    <td>${bj(l.lockStart)}</td><td>${l.type === 1 ? 'IPO 后' : bj(l.lockEnd, true).slice(0, 10)}</td></tr>`;
+  const TOP = 20;
+  $('tbl').innerHTML = head + rows.slice(0, TOP).map(tr).join('');
+  if (rows.length > TOP) {
+    $('tblMore').style.display = '';
+    $('tblMoreText').textContent = `展开其余 ${rows.length - TOP} 个地址`;
+    $('tbl2').innerHTML = head + rows.slice(TOP).map((l, i) => tr(l, i + TOP)).join('');
+  } else $('tblMore').style.display = 'none';
+  $('tblNote').textContent = `按锁仓量排序 · 合约 activeLockCount ${S.activeLockCount}`;
+}
+
+// ---------- data flow ----------
+function setLive(state, text) { const el = $('live'); el.className = 'live ' + state; $('liveText').textContent = text; }
+
+async function loadSnapshot() {
+  try {
+    const r = await fetch('./snapshot.json?t=' + Math.floor(Date.now() / 60000));
+    if (!r.ok) return;
+    const j = await r.json();
+    hist = j.hist || [];
+    if (!S) { S = j; render(); setLive('', `快照 ${bj(j.generatedAt)}，正在读链…`); }
+    $('footSnap').textContent = `快照生成于 ${bj(j.generatedAt, true)}（北京时间），历史记录 ${hist.length} 点。`;
+  } catch {}
+}
+
+async function loadPrice() {
+  try {
+    const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/' + PPOLY);
+    const j = await r.json();
+    const ps = (j.pairs || []).filter((p) => p.chainId === 'bsc' && p.baseToken.address.toLowerCase() === PPOLY && /^(USDT|USDC|USD1)$/.test(p.quoteToken.symbol) && p.liquidity && p.liquidity.usd > 20000);
+    ps.sort((a, b) => b.liquidity.usd - a.liquidity.usd);
+    if (ps[0]) { const p = ps[0]; price = { p: +p.priceUsd, ch: p.priceChange ? +p.priceChange.h24 : NaN, liq: p.liquidity.usd, dex: p.dexId + (p.labels && p.labels[0] ? ' ' + p.labels[0] : '') }; }
+  } catch {}
+}
+
+async function refresh() {
+  try {
+    const [cur] = await Promise.all([readChain(), loadPrice()]);
+    S = cur; render();
+    setLive('on', `链上实时 · ${bj(cur.generatedAt)} 更新`);
+  } catch (e) {
+    setLive('err', '读链失败，显示快照数据，稍后重试');
+    render();
+  }
+}
+
+loadSnapshot().then(refresh);
+setInterval(refresh, REFRESH);
+</script>
+</body>
+</html>
