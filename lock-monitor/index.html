@@ -107,6 +107,14 @@
     .tl .now { color: var(--acc); font-weight: 600; }
     .tl .ev { color: var(--acc-2); font-weight: 600; }
     .tl .ends { position: absolute; top: 40px; font-size: 11.5px; color: var(--sub); }
+    .cd { display: grid; grid-template-columns: 3fr 2fr; gap: 10px; margin-bottom: 14px; }
+    .cd > div { background: var(--chip); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; min-width: 0; }
+    .cd > .main { background: var(--acc-soft); border-color: color-mix(in srgb, var(--acc) 35%, transparent); }
+    .cd span { display: block; color: var(--sub); font-size: 12.5px; }
+    .cdv { font-size: 34px; font-weight: 800; line-height: 1.15; letter-spacing: -.5px; white-space: nowrap; }
+    .cd .main .cdv { color: var(--acc); }
+    .cdv small { font-size: 14px; font-weight: 600; color: var(--sub); margin: 0 6px 0 2px; letter-spacing: 0; }
+    .cdv.sm { font-size: 24px; }
     .rates { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
     .rates div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
     .rates span { display: block; color: var(--sub); font-size: 12px; }
@@ -175,6 +183,11 @@
     @media (max-width: 860px) {
       .two, .two.even { grid-template-columns: 1fr; }
       .rates { grid-template-columns: repeat(2, 1fr); }
+      .cd { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .cdv { font-size: 28px; }
+      .cdv.sm { font-size: 20px; }
     }
     @media (max-width: 640px) {
       body { padding: 16px 16px 32px; }
@@ -232,7 +245,11 @@
   </section>
 
   <section class="panel">
-    <div class="ptitle"><b>首轮回购进度</b><span id="tlText"></span></div>
+    <div class="ptitle"><b>首轮回购进度</b><span>北京时间 · 公告时刻按 Paimon 前端取 12/24 08:00</span></div>
+    <div class="cd">
+      <div class="main"><span>距 12/24 公布回购价格与额度</span><div class="cdv" id="cdAnn">—</div></div>
+      <div><span>距 12/31 首轮回购</span><div class="cdv sm" id="cdR1">—</div></div>
+    </div>
     <div class="tl">
       <div class="rail"></div><div class="fill" id="tlFill"></div>
       <div class="mk now" id="mkNow"></div><div class="mk ev" id="mkAnn"></div>
@@ -418,11 +435,10 @@ function render() {
   $('mkAnn').style.left = pos(ANNOUNCE) + '%'; $('mkAnn').textContent = '12/24 公告';
   // 两个标记靠太近时把「现在」的文字收短
   $('mkNow').textContent = Math.abs(pos(t) - pos(ANNOUNCE)) < 18 ? '现在' : '现在 ' + bjDay(t);
-  $('tlText').textContent = t < ROUND1 ? `距首轮回购 ${days(ROUND1 - t)}` : '首轮回购已到期';
   const next = ROUNDS.find((r) => r >= t);
   const firstUnlock = six.length ? Math.min(...six.map((l) => l.lockEnd)) : 0;
   $('rates').innerHTML = [
-    ['距 12/24 公告', days(ANNOUNCE - t)],
+    ['IPO 锁加入截止', `12/31 · ${days(IPO_CLOSE - t)}`],
     ['下一轮回购', next ? `${bjDay(next)} · ${days(next - t)}` : '—'],
     ['全部回购上限合计', `${fmt(total, 0)} pPOLY`],
     ['最早 6 个月锁到期', firstUnlock ? bj(firstUnlock, true).slice(0, 10) : '—'],
@@ -571,6 +587,18 @@ async function refresh() {
     render();
   }
 }
+
+// 倒计时每秒走，不依赖链上数据
+function countdown(el, target, doneText) {
+  const s = target - Date.now() / 1000;
+  if (s <= 0) { el.textContent = doneText; return; }
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = Math.floor(s % 60);
+  const p = (n) => String(n).padStart(2, '0');
+  el.innerHTML = `${d}<small>天</small>${p(h)}<small>时</small>${p(m)}<small>分</small>${p(sec)}<small>秒</small>`;
+}
+function tick() { countdown($('cdAnn'), ANNOUNCE, '已到公告时间'); countdown($('cdR1'), ROUND1, '首轮回购已到'); }
+tick();
+setInterval(tick, 1000);
 
 loadSnapshot().then(refresh);
 setInterval(refresh, REFRESH);
