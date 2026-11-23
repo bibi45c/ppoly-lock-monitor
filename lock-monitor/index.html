@@ -147,6 +147,8 @@
     .mini div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
     .mini span { display: block; color: var(--sub); font-size: 12px; }
     .mini b { font-size: 16px; }
+    .mini b .strong { display: inline; font-size: 18px; font-weight: 800; }
+    .mini b .up { color: var(--acc-3); } .mini b .dn { color: #e5484d; }
     /* 价格卡片撑满与右侧「最近锁仓」等高：统计格平分剩余高度，说明贴底 */
     .pxpanel { display: flex; flex-direction: column; }
     .pxpanel .mini { flex: 1; grid-auto-rows: 1fr; }
@@ -183,6 +185,9 @@
     .facts span { display: block; color: var(--sub); font-size: 12px; margin-bottom: 2px; }
     code { font-size: 12px; word-break: break-all; }
     .foot { color: var(--sub); font-size: 12px; display: grid; gap: 6px; }
+    .tokenbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 6px; padding-top: 12px; border-top: 1px dashed var(--line); }
+    .tokenbar .addr { color: var(--ink); text-decoration: none; word-break: break-all; }
+    .tokenbar .addr:hover { color: var(--acc); }
     .more { margin-top: 8px; }
     .more summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--sub); font-size: 13px; padding: 4px 2px; user-select: none; }
     .more summary::-webkit-details-marker { display: none; }
@@ -326,6 +331,12 @@
   <div class="foot">
     <div>非官方看板，数据直接读 BSC 链上合约（徽章 NFT 逐个 <code>ownerOf</code> → 锁仓合约 <code>getLock</code>），每分钟刷新；价格来自 DexScreener。不构成投资建议。</div>
     <div id="footSnap"></div>
+    <div class="tokenbar">
+      <span>pPOLY 代币（BSC）</span>
+      <a class="mono addr" href="https://bscscan.com/token/0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6" target="_blank" rel="noopener" title="在 BscScan 查看">0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6</a>
+      <button class="chip" type="button" id="copyToken">复制</button>
+      <a class="chip" href="https://pancakeswap.finance/swap?chain=bsc&amp;inputCurrency=0x55d398326f99059fF775485246999027B3197955&amp;outputCurrency=0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6" target="_blank" rel="noopener">在 PancakeSwap 购买 ↗</a>
+    </div>
   </div>
 </main>
 
@@ -359,6 +370,11 @@ const syncTheme = () => root.classList.toggle('is-dark', isDark());
 syncTheme();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTheme);
 $('themeBtn').onclick = () => { root.dataset.theme = isDark() ? 'light' : 'dark'; try { localStorage.setItem('plock-theme', root.dataset.theme); } catch {} syncTheme(); };
+$('copyToken').onclick = async () => {
+  const b = $('copyToken');
+  try { await navigator.clipboard.writeText(PPOLY); b.textContent = '已复制'; } catch { b.textContent = '复制失败'; }
+  setTimeout(() => { b.textContent = '复制'; }, 1500);
+};
 
 // ---------- chain ----------
 const pad = (x) => BigInt(x).toString(16).padStart(64, '0');
@@ -478,11 +494,12 @@ document.addEventListener('mouseover', (e) => { const el = e.target.closest('[da
 function drawChart(locks) {
   const svg = $('svg'), W = 640, H = 300, P = { l: 52, r: 44, t: 14, b: 28 };
   const sorted = locks.slice().sort((a, b) => a.createdAt - b.createdAt);
-  const t1 = Math.max(now(), LAUNCH + 86400);
-  const t0 = LAUNCH;
-  // 按北京时间日分桶
+  // 按北京时间日分桶；横轴取整天（首日 0 点到今天 24 点），每天一格，柱子和日期都放在格子正中
   const dayKey = (ts) => Math.floor((ts + 8 * 3600) / 86400);
-  const d0 = dayKey(t0), d1 = dayKey(t1);
+  const dayStart = (d) => d * 86400 - 8 * 3600;
+  const tNow = Math.max(now(), LAUNCH);
+  const d0 = dayKey(LAUNCH), d1 = dayKey(tNow);
+  const t0 = dayStart(d0), t1 = dayStart(d1 + 1);
   const daily = new Map();
   for (const l of sorted) daily.set(dayKey(l.createdAt), (daily.get(dayKey(l.createdAt)) || 0) + l.amount);
   const maxCum = Math.max(sorted.reduce((s, l) => s + l.amount, 0), 1);
@@ -495,25 +512,25 @@ function drawChart(locks) {
     g += `<line x1="${P.l}" x2="${W - P.r}" y1="${yy}" y2="${yy}" stroke="var(--line)"/><text x="${P.l - 6}" y="${yy + 4}" text-anchor="end">${fmt0(v)}</text>`; }
   const bw = Math.max(4, (W - P.l - P.r) / Math.max(1, d1 - d0 + 1) * 0.6);
   for (let d = d0; d <= d1; d++) {
-    const ts = d * 86400 - 8 * 3600 + 43200, v = daily.get(d) || 0;
+    const ts = dayStart(d) + 43200, v = daily.get(d) || 0;
     if (v) g += `<rect x="${x(ts) - bw / 2}" y="${yb(v)}" width="${bw}" height="${H - P.b - yb(v)}" rx="2" fill="var(--acc-2)" opacity=".55"/>`;
   }
   const step = Math.max(1, Math.ceil((d1 - d0 + 1) / 8));
-  for (let d = d0; d <= d1; d += step) { const ts = d * 86400 - 8 * 3600; if (ts >= t0)
-    g += `<text x="${x(ts)}" y="${H - 8}" text-anchor="middle">${bjDay(ts)}</text>`; }
-  let cum = 0, path = `M${x(t0)},${y(0)}`;
+  for (let d = d1; d >= d0; d -= step) // 从今天往回取，保证最新一天有标签
+    g += `<text x="${x(dayStart(d) + 43200)}" y="${H - 8}" text-anchor="middle">${bjDay(dayStart(d))}</text>`;
+  let cum = 0, path = `M${x(LAUNCH)},${y(0)}`;
   const pts = [];
   for (const l of sorted) { path += `L${x(l.createdAt)},${y(cum)}`; cum += l.amount; path += `L${x(l.createdAt)},${y(cum)}`; pts.push([l.createdAt, cum, l]); }
-  path += `L${x(t1)},${y(cum)}`;
-  g += `<path d="${path}L${x(t1)},${y(0)}Z" fill="var(--acc-soft)"/><path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2.2"/>`;
-  g += `<text x="${W - P.r + 4}" y="${y(cum) + 4}" style="fill:var(--acc);font-weight:700">${fmt0(cum)}</text>`;
+  path += `L${x(tNow)},${y(cum)}`; // 曲线画到现在为止，今天剩余时段留空
+  g += `<path d="${path}L${x(tNow)},${y(0)}Z" fill="var(--acc-soft)"/><path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2.2"/>`;
+  g += `<text x="${x(tNow) + 4}" y="${y(cum) + 4}" style="fill:var(--acc);font-weight:700">${fmt0(cum)}</text>`;
   g += `<line id="hov" x1="0" x2="0" y1="${P.t}" y2="${H - P.b}" stroke="var(--sub)" stroke-dasharray="3 3" style="display:none"/>`;
   svg.innerHTML = g;
   const tip = $('tip'), hov = svg.querySelector('#hov');
   svg.onmousemove = (e) => {
     const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * W;
     const ts = t0 + (mx - P.l) / (W - P.l - P.r) * (t1 - t0);
-    if (ts < t0 || ts > t1) { tip.style.display = 'none'; hov.style.display = 'none'; return; }
+    if (ts < t0 || ts > tNow) { tip.style.display = 'none'; hov.style.display = 'none'; return; }
     let c = 0, cnt = 0; for (const [tt, cc] of pts) { if (tt <= ts) { c = cc; cnt++; } }
     const dv = daily.get(dayKey(ts)) || 0;
     tip.innerHTML = `${bj(Math.floor(ts))}<br>累计 <b>${fmt(c)}</b> · ${cnt} 个地址<br>当日新增 ${fmt(dv)}`;
@@ -545,7 +562,8 @@ function drawPrice(locks, total) {
   }
   const p = price ? price.p : NaN;
   $('pxStats').innerHTML = [
-    ['较发行价 $15.5', Number.isFinite(p) ? `${((p / ISSUE - 1) * 100).toFixed(1)}%` : '—'],
+    ['较发行价 $15.5', Number.isFinite(p) ? (() => { const r = (p / ISSUE - 1) * 100;
+      return `<span class="${r >= 0 ? 'up' : 'dn'} strong">${r >= 0 ? '+' : ''}${r.toFixed(1)}%</span>`; })() : '—'],
     ['锁仓均价（锁仓时）', `$${fmt(entry, 2)}`],
     ['按 $15.5 卖满回购上限', usd(total * ISSUE)],
     ['24h 成交额', price && Number.isFinite(price.vol) ? usd(price.vol) : '—'],
