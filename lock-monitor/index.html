@@ -80,7 +80,7 @@
     .big { font-size: 56px; font-weight: 800; line-height: 1.05; letter-spacing: -1px; margin: 6px 0; }
     .big small { font-size: 18px; font-weight: 600; color: var(--sub); margin-left: 6px; letter-spacing: 0; }
     .delta { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--acc-soft); color: var(--acc); font-weight: 600; font-size: 13px; }
-    .delta.sub { background: var(--chip); color: var(--sub); border: 1px solid var(--line); font-weight: 500; margin-left: 6px; }
+    .bigusd { display: inline-block; font-size: 24px; font-weight: 700; letter-spacing: 0; color: var(--sub); margin-left: 14px; white-space: nowrap; }
     .kv { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 20px; border-top: 1px dashed var(--line); }
     .kv div { padding: 12px 12px 0 0; min-width: 0; }
     .kv div + div { padding-left: 14px; border-left: 1px dashed var(--line); }
@@ -96,6 +96,9 @@
     .gauge .c b { font-size: 26px; font-weight: 800; }
     .gauge .c span { color: var(--sub); font-size: 12px; }
     .glegend { display: flex; justify-content: center; gap: 12px; font-size: 12px; color: var(--sub); margin-top: 6px; }
+    .glegend { flex-wrap: wrap; row-gap: 4px; }
+    .glegend > span { white-space: nowrap; }
+    .glegend em { font-style: normal; }
     .glegend i, .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 
     /* timeline */
@@ -115,10 +118,6 @@
     .cd .main .cdv { color: var(--acc); }
     .cdv small { font-size: 14px; font-weight: 600; color: var(--sub); margin: 0 6px 0 2px; letter-spacing: 0; }
     .cdv.sm { font-size: 24px; }
-    .rates { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
-    .rates div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
-    .rates span { display: block; color: var(--sub); font-size: 12px; }
-    .rates b { font-size: 16px; }
 
     .two { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
     .two.even { grid-template-columns: 1fr 1fr; }
@@ -145,6 +144,10 @@
     .mini div { background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
     .mini span { display: block; color: var(--sub); font-size: 12px; }
     .mini b { font-size: 16px; }
+    /* 价格卡片撑满与右侧「最近锁仓」等高：统计格平分剩余高度，说明贴底 */
+    .pxpanel { display: flex; flex-direction: column; }
+    .pxpanel .mini { flex: 1; grid-auto-rows: 1fr; }
+    .pxpanel .mini div { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 
     .feed { display: grid; gap: 6px; }
     .feed div { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 10px; background: var(--chip); border: 1px solid var(--line); font-size: 13px; }
@@ -182,7 +185,6 @@
 
     @media (max-width: 860px) {
       .two, .two.even { grid-template-columns: 1fr; }
-      .rates { grid-template-columns: repeat(2, 1fr); }
       .cd { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
@@ -194,6 +196,7 @@
       .hero { grid-template-columns: 1fr; }
       .gauge { width: 150px; height: 150px; justify-self: center; }
       .big { font-size: 42px; }
+      .bigusd { display: block; margin: 4px 0 0; font-size: 20px; }
       .kv { grid-template-columns: 1fr 1fr; }
       .kv div:nth-child(3) { grid-column: span 2; border-left: 0; padding-left: 0; }
       .facts > div, .facts > .w2, .facts > .half { grid-column: span 6; }
@@ -225,8 +228,8 @@
   <section class="panel hero">
     <div>
       <div class="big-label">已锁仓 pPOLY</div>
-      <div class="big"><span id="total">—</span><small>pPOLY</small></div>
-      <span class="delta" id="delta">近 24 小时 —</span><span class="delta sub" id="usd">—</span>
+      <div class="big"><span id="total">—</span><small>pPOLY</small><span class="bigusd" id="usd">—</span></div>
+      <span class="delta" id="delta">近 24 小时 —</span>
       <div class="kv">
         <div><span>锁仓地址</span><b id="wallets">—</b></div>
         <div><span>6 个月锁 / IPO 锁（地址）</span><b><span class="c1" id="n6">—</span><em>/</em><span class="c2" id="nIpo">—</span></b></div>
@@ -240,7 +243,7 @@
           <circle id="ring6" cx="60" cy="60" r="52" fill="none" stroke="var(--acc)" stroke-width="12" stroke-dasharray="0 327"/></svg>
         <div class="c"><b id="supply">—</b><span>占 pPOLY 总量</span></div>
       </div>
-      <div class="glegend"><span><i style="background:var(--acc)"></i>6 个月 <b id="a6">—</b></span><span><i style="background:var(--acc-2)"></i>IPO <b id="aIpo">—</b></span></div>
+      <div class="glegend"><span><i style="background:var(--acc)"></i>6 个月 <b id="a6">—</b> <em id="p6"></em></span><span><i style="background:var(--acc-2)"></i>IPO <b id="aIpo">—</b> <em id="pIpo"></em></span></div>
     </div>
   </section>
 
@@ -255,7 +258,6 @@
       <div class="mk now" id="mkNow"></div><div class="mk ev" id="mkAnn"></div>
       <div class="ends" style="left:0">11/16 锁仓上线</div><div class="ends" style="right:0">12/31 首轮回购</div>
     </div>
-    <div class="rates" id="rates"></div>
   </section>
 
   <section class="two">
@@ -273,7 +275,7 @@
   </section>
 
   <section class="two even">
-    <div class="panel">
+    <div class="panel pxpanel">
       <div class="ptitle"><b>pPOLY 二级价格</b><span>DexScreener · 流动性最大的池子</span></div>
       <div><div class="px" id="px">—<small>USD</small></div><div class="pxchg" id="pxChg">&nbsp;</div></div>
       <div class="mini" id="pxStats"></div>
@@ -327,8 +329,7 @@ const SUPPLY = 322580.65, ISSUE = 15.5;
 const SEL = { ownerOf: '6352211e', getLock: '6b9db4e6', totalLocked: '05a9f274', activeCount: '4ac3a13a' };
 const RPCS = ['https://bsc-rpc.publicnode.com', 'https://bsc-dataseed.bnbchain.org'];
 const T = (y, m, d, h = 0) => Date.UTC(y, m - 1, d, h) / 1000;
-const LAUNCH = T(2026, 11, 16), ANNOUNCE = T(2026, 12, 24), ROUND1 = T(2026, 12, 31), IPO_CLOSE = T(2026, 12, 31, 23) + 3599;
-const ROUNDS = [T(2026, 12, 31), T(2027, 3, 31), T(2027, 6, 30), T(2027, 9, 30), T(2027, 12, 31)];
+const LAUNCH = T(2026, 11, 16), ANNOUNCE = T(2026, 12, 24), ROUND1 = T(2026, 12, 31);
 const BATCH = 40, MISS_LIMIT = 8, REFRESH = 60000;
 
 const $ = (id) => document.getElementById(id);
@@ -341,7 +342,6 @@ const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
 const bj = (ts, withYear) => { const d = new Date((ts + 8 * 3600) * 1000); const p = (n) => String(n).padStart(2, '0');
   return (withYear ? d.getUTCFullYear() + '/' : '') + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()); };
 const bjDay = (ts) => { const d = new Date((ts + 8 * 3600) * 1000); return (d.getUTCMonth() + 1) + '/' + d.getUTCDate(); };
-const days = (s) => s <= 0 ? '已到' : s < 86400 ? Math.ceil(s / 3600) + ' 小时' : (s / 86400).toFixed(1) + ' 天';
 const now = () => Math.floor(Date.now() / 1000);
 
 // ---------- theme ----------
@@ -418,13 +418,15 @@ function render() {
   const d24 = locks.filter((l) => l.createdAt >= t - 86400);
   $('total').textContent = fmt(total);
   $('delta').textContent = `近 24 小时 +${fmt(d24.reduce((s, l) => s + l.amount, 0))} · ${d24.length} 个新地址`;
-  $('usd').textContent = price ? `≈ ${usd(total * price.p)}（现价）` : `≈ ${usd(total * ISSUE)}（按 $15.5）`;
+  $('usd').textContent = price ? `≈ ${usd(total * price.p)}` : `≈ ${usd(total * ISSUE)}（按 $15.5）`;
+  $('usd').title = price ? `按现价 $${fmt(price.p, 2)} 计` : '暂无现价，按发行价 $15.5 计';
   $('wallets').textContent = fmt0(n);
   $('n6').textContent = six.length; $('nIpo').textContent = ipo.length;
   $('avg').textContent = n ? fmt(total / n, 1) : '—'; $('med').textContent = fmt(med, 1);
   $('supply').textContent = (total / SUPPLY * 100).toFixed(3) + '%';
   $('a6').textContent = fmt(a6, 0); $('aIpo').textContent = fmt(aI, 0);
   const C = 2 * Math.PI * 52, sum = a6 + aI || 1;
+  $('p6').textContent = (a6 / sum * 100).toFixed(1) + '%'; $('pIpo').textContent = (aI / sum * 100).toFixed(1) + '%';
   $('ring6').setAttribute('stroke-dasharray', `${C * a6 / sum} ${C}`);
   $('ringIpo').setAttribute('stroke-dasharray', `0 ${C * a6 / sum} ${C * aI / sum} ${C}`);
 
@@ -435,14 +437,6 @@ function render() {
   $('mkAnn').style.left = pos(ANNOUNCE) + '%'; $('mkAnn').textContent = '12/24 公告';
   // 两个标记靠太近时把「现在」的文字收短
   $('mkNow').textContent = Math.abs(pos(t) - pos(ANNOUNCE)) < 18 ? '现在' : '现在 ' + bjDay(t);
-  const next = ROUNDS.find((r) => r >= t);
-  const firstUnlock = six.length ? Math.min(...six.map((l) => l.lockEnd)) : 0;
-  $('rates').innerHTML = [
-    ['IPO 锁加入截止', `12/31 · ${days(IPO_CLOSE - t)}`],
-    ['下一轮回购', next ? `${bjDay(next)} · ${days(next - t)}` : '—'],
-    ['全部回购上限合计', `${fmt(total, 0)} pPOLY`],
-    ['最早 6 个月锁到期', firstUnlock ? bj(firstUnlock, true).slice(0, 10) : '—'],
-  ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
 
   drawChart(locks);
   drawCols(amts);
@@ -524,7 +518,7 @@ function drawPrice(locks, total) {
     ['较发行价 $15.5', Number.isFinite(p) ? `${((p / ISSUE - 1) * 100).toFixed(1)}%` : '—'],
     ['锁仓均价（锁仓时）', `$${fmt(entry, 2)}`],
     ['按 $15.5 卖满回购上限', usd(total * ISSUE)],
-    ['卖 50 枚给回购 vs 现价至少多', Number.isFinite(p) ? `≥ $${fmt((ISSUE - p) * 50, 0)}` : '—'],
+    ['24h 成交额', price && Number.isFinite(price.vol) ? usd(price.vol) : '—'],
   ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
 }
 
@@ -532,7 +526,7 @@ const typeTag = (t) => t === 1 ? '<span class="tag ipo">IPO</span>' : '<span cla
 const addrLink = (a) => `<a class="mono" href="https://bscscan.com/address/${a}" target="_blank" rel="noopener" title="${a}">${short(a)}</a>`;
 
 function drawFeed(locks) {
-  const rec = locks.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+  const rec = locks.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
   $('feedNote').textContent = `共 ${locks.length} 个`;
   $('feed').innerHTML = rec.map((l) => `<div><span class="t">${bj(l.createdAt)}</span>${addrLink(l.owner)}<span>${typeTag(l.type)} <b>${fmt(l.amount)}</b></span></div>`).join('') || '<div>暂无</div>';
 }
@@ -573,7 +567,7 @@ async function loadPrice() {
     const j = await r.json();
     const ps = (j.pairs || []).filter((p) => p.chainId === 'bsc' && p.baseToken.address.toLowerCase() === PPOLY && /^(USDT|USDC|USD1)$/.test(p.quoteToken.symbol) && p.liquidity && p.liquidity.usd > 20000);
     ps.sort((a, b) => b.liquidity.usd - a.liquidity.usd);
-    if (ps[0]) { const p = ps[0]; price = { p: +p.priceUsd, ch: p.priceChange ? +p.priceChange.h24 : NaN, liq: p.liquidity.usd, dex: p.dexId + (p.labels && p.labels[0] ? ' ' + p.labels[0] : '') }; }
+    if (ps[0]) { const p = ps[0]; price = { p: +p.priceUsd, ch: p.priceChange ? +p.priceChange.h24 : NaN, liq: p.liquidity.usd, vol: p.volume ? +p.volume.h24 : NaN, dex: p.dexId + (p.labels && p.labels[0] ? ' ' + p.labels[0] : '') }; }
   } catch {}
 }
 
