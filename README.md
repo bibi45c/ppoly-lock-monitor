@@ -28,7 +28,7 @@ pPOLY 锁仓看板（非官方）：实时统计 Paimon pPOLY「Unicorn HODLer�
 
 页面打开时先读 `snapshot.json` 画首屏，再直接读链刷新，之后每分钟刷新一次。快照由 Pages 工作流每 30 分钟重建（GitHub 定时任务可能延迟），`hist` 字段在上一次线上快照的基础上追加一点（间隔 ≥ 20 分钟），形成总锁仓的历史记录。
 
-快照字段 `locks` 为列式数组：`[tokenId, owner, lockType, amount, usdtBase, createdAt, lockStart, lockEnd, convertedAt]`。
+快照字段 `locks` 为列式数组：`[tokenId, owner, lockType, amount, usdtBase, createdAt, lockStart, lockEnd, convertedAt, lastAccrualTime, walletBalance]`（`walletBalance` 为该地址钱包内未锁的 pPOLY；末两列为后加，旧快照可能缺）。
 
 ## 本地预览
 

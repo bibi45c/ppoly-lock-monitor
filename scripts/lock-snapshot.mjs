@@ -72,8 +72,14 @@ async function readLocks() {
       const g = words(res[k]);
       if (g[0] === 0n) return;
       locks.push([tokenId, owner, Number(g[8]), toNum(g[0]), Math.round(toNum(g[1]) * 100) / 100,
-        Number(g[4]), Number(g[5]), Number(g[6]), Number(g[9])]);
+        Number(g[4]), Number(g[5]), Number(g[6]), Number(g[9]), Number(g[7])]);
     });
+  }
+  // 各地址钱包里未锁的 pPOLY
+  for (let i = 0; i < locks.length; i += BATCH) {
+    const part = locks.slice(i, i + BATCH);
+    const res = await batch(part.map((l) => call(PPOLY, SEL.balanceOf, l[1])));
+    part.forEach((l, k) => { l[10] = res[k] ? Math.round(toNum(BigInt(res[k])) * 100) / 100 : null; });
   }
   const [tl, ac, bal] = await batch([call(STAKING, SEL.totalLocked), call(STAKING, SEL.activeCount), call(PPOLY, SEL.balanceOf, STAKING)]);
   return { locks, totalLocked: toNum(BigInt(tl)), activeLockCount: Number(BigInt(ac)), contractBalance: toNum(BigInt(bal)) };

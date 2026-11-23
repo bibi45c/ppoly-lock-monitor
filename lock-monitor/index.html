@@ -160,6 +160,7 @@
     .tag { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; }
     .tag.m6 { background: var(--acc-soft); color: var(--acc); }
     .tag.ipo { background: color-mix(in srgb, var(--acc-2) 18%, transparent); color: var(--acc-2); }
+    .tag.act { background: color-mix(in srgb, var(--acc-3) 18%, transparent); color: var(--acc-3); }
 
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th { text-align: right; font-weight: 500; color: var(--sub); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -168,6 +169,11 @@
     td a { text-decoration: none; }
     td a:hover { color: var(--acc); }
     .tblwrap { overflow-x: auto; }
+    /* 同一地址跨卡片高亮 */
+    #feed > div { transition: background .15s, border-color .15s; }
+    #feed > div.hl { background: var(--acc-soft); border-color: var(--acc); }
+    tr.hl td { background: var(--acc-soft); }
+    tr.hl td:first-child { box-shadow: inset 3px 0 0 var(--acc); }
 
     .facts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
     .facts > div { grid-column: span 2; background: var(--chip); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
@@ -328,7 +334,7 @@ const STAKING = '0xde4da55b45c4634517111d3e4fd8f3a39c643bf9';
 const BADGE = '0x3507b3ef34998dc87157658432bad694b96927ce';
 const PPOLY = '0x1d80392d12caaaf9e333bb0bb7f021eacf297fe6';
 const SUPPLY = 322580.65, ISSUE = 15.5;
-const SEL = { ownerOf: '6352211e', getLock: '6b9db4e6', totalLocked: '05a9f274', activeCount: '4ac3a13a' };
+const SEL = { ownerOf: '6352211e', getLock: '6b9db4e6', totalLocked: '05a9f274', activeCount: '4ac3a13a', balanceOf: '70a08231' };
 const RPCS = ['https://bsc-rpc.publicnode.com', 'https://bsc-dataseed.bnbchain.org'];
 const T = (y, m, d, h = 0) => Date.UTC(y, m - 1, d, h) / 1000;
 const LAUNCH = T(2026, 11, 16), ANNOUNCE = T(2026, 12, 24), ROUND1 = T(2026, 12, 31);
@@ -396,8 +402,14 @@ async function readChain() {
       if (!res[k]) return;
       const g = words(res[k]);
       if (g[0] === 0n) return;
-      locks.push([tokenId, owner, Number(g[8]), toNum(g[0]), toNum(g[1]), Number(g[4]), Number(g[5]), Number(g[6]), Number(g[9])]);
+      locks.push([tokenId, owner, Number(g[8]), toNum(g[0]), toNum(g[1]), Number(g[4]), Number(g[5]), Number(g[6]), Number(g[9]), Number(g[7])]);
     });
+  }
+  // 各地址钱包里未锁的 pPOLY（回购卖的就是这部分）
+  for (let i = 0; i < locks.length; i += BATCH) {
+    const part = locks.slice(i, i + BATCH);
+    const res = await batch(part.map((l) => call(PPOLY, SEL.balanceOf, l[1])));
+    part.forEach((l, k) => { l[10] = res[k] ? toNum(BigInt(res[k])) : null; });
   }
   const [tl, ac] = await batch([call(STAKING, SEL.totalLocked), call(STAKING, SEL.activeCount)]);
   return { locks, totalLocked: toNum(BigInt(tl)), activeLockCount: Number(BigInt(ac)), generatedAt: now() };
@@ -405,7 +417,14 @@ async function readChain() {
 
 // ---------- state ----------
 let S = null, hist = [], price = null;
-const L = (l) => ({ tokenId: l[0], owner: l[1], type: l[2], amount: l[3], usdtBase: l[4], createdAt: l[5], lockStart: l[6], lockEnd: l[7] });
+const L = (l) => {
+  const o = { tokenId: l[0], owner: l[1], type: l[2], amount: l[3], usdtBase: l[4], createdAt: l[5], lockStart: l[6], lockEnd: l[7],
+    convertedAt: l[8] || 0, lastAccrual: l[9] || 0, wallet: Number.isFinite(l[10]) ? l[10] : NaN };
+  // 最近一次动作：6 个月锁加仓会重置 lockStart；lastAccrualTime 在加仓时也会更新（IPO 锁靠它）；转 IPO 记 convertedAt
+  o.lastAct = Math.max(o.createdAt, o.lockStart, o.lastAccrual, o.convertedAt);
+  o.act = o.convertedAt && o.convertedAt === o.lastAct ? 'conv' : o.lastAct > o.createdAt ? 'add' : 'new';
+  return o;
+};
 
 function render() {
   if (!S) return;
@@ -443,7 +462,18 @@ function render() {
   drawPrice(locks, total);
   drawFeed(locks);
   drawTable(locks, total);
+  const a = hlAddr; hlAddr = null; setHl(a); // 每分钟重画后保留当前高亮
 }
+
+// 鼠标停在任一地址行（最近锁仓 / 锁仓地址表）时，两处同一地址一起高亮
+let hlAddr = null;
+function setHl(a) {
+  if (a === hlAddr) return;
+  hlAddr = a;
+  document.querySelectorAll('[data-addr].hl').forEach((e) => e.classList.remove('hl'));
+  if (a) document.querySelectorAll(`[data-addr="${a}"]`).forEach((e) => e.classList.add('hl'));
+}
+document.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-addr]'); setHl(el ? el.dataset.addr : null); });
 
 function drawChart(locks) {
   const svg = $('svg'), W = 640, H = 300, P = { l: 52, r: 44, t: 14, b: 28 };
@@ -526,16 +556,18 @@ const typeTag = (t) => t === 1 ? '<span class="tag ipo">IPO</span>' : '<span cla
 const addrLink = (a) => `<a class="mono" href="https://bscscan.com/address/${a}" target="_blank" rel="noopener" title="${a}">${short(a)}</a>`;
 
 function drawFeed(locks) {
-  const rec = locks.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
-  $('feedNote').textContent = `共 ${locks.length} 个`;
-  $('feed').innerHTML = rec.map((l) => `<div><span class="t">${bj(l.createdAt)}</span>${addrLink(l.owner)}<span>${typeTag(l.type)} <b>${fmt(l.amount)}</b></span></div>`).join('') || '<div>暂无</div>';
+  // 按最近一次动作排序（新锁、加仓、转 IPO）；链上只存当前状态，加仓行显示加仓后的总量
+  const rec = locks.slice().sort((a, b) => b.lastAct - a.lastAct).slice(0, 6);
+  const actTag = (l) => l.act === 'add' ? '<span class="tag act" title="加仓后总量">加仓</span> ' : l.act === 'conv' ? '<span class="tag act">转 IPO</span> ' : '';
+  $('feedNote').textContent = `共 ${locks.length} 个 · 含加仓`;
+  $('feed').innerHTML = rec.map((l) => `<div data-addr="${l.owner.toLowerCase()}"><span class="t">${bj(l.lastAct)}</span>${addrLink(l.owner)}<span>${actTag(l)}${typeTag(l.type)} <b>${fmt(l.amount)}</b></span></div>`).join('') || '<div>暂无</div>';
 }
 
 function drawTable(locks, total) {
   const rows = locks.slice().sort((a, b) => b.amount - a.amount || a.createdAt - b.createdAt);
-  const head = '<tr><th>#</th><th>地址</th><th>类型</th><th>数量</th><th>占比</th><th>锁仓时价格</th><th>锁仓（北京）</th><th>到期</th></tr>';
-  const tr = (l, i) => `<tr><td>${i + 1}</td><td>${addrLink(l.owner)}</td><td>${typeTag(l.type)}</td><td><b>${fmt(l.amount)}</b></td>
-    <td>${(l.amount / total * 100).toFixed(1)}%</td><td>${l.amount ? '$' + fmt(l.usdtBase / l.amount) : '—'}</td>
+  const head = '<tr><th>#</th><th>地址</th><th>类型</th><th>数量</th><th>占比</th><th title="地址钱包里未锁的 pPOLY">钱包余额</th><th>锁仓时价格</th><th>锁仓（北京）</th><th>到期</th></tr>';
+  const tr = (l, i) => `<tr data-addr="${l.owner.toLowerCase()}"><td>${i + 1}</td><td>${addrLink(l.owner)}</td><td>${typeTag(l.type)}</td><td><b>${fmt(l.amount)}</b></td>
+    <td>${(l.amount / total * 100).toFixed(1)}%</td><td>${fmt(l.wallet)}</td><td>${l.amount ? '$' + fmt(l.usdtBase / l.amount) : '—'}</td>
     <td>${bj(l.lockStart)}</td><td>${l.type === 1 ? 'IPO 后' : bj(l.lockEnd, true).slice(0, 10)}</td></tr>`;
   const TOP = 20;
   $('tbl').innerHTML = head + rows.slice(0, TOP).map(tr).join('');
